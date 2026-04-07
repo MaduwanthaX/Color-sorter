@@ -18,22 +18,27 @@
         .status {
             margin: 5px 0 15px 0; padding: 10px; background-color: #e74c3c; color: white; border-radius: 5px; font-weight: bold; font-size: 14px;
         }
-        /* Sliders සඳහා UI */
         .controls {
             background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-top: 15px; text-align: left;
         }
         .control-group { margin-bottom: 10px; }
         .control-group label { display: flex; justify-content: space-between; font-size: 13px; font-weight: bold; color: #555;}
         input[type=range] { width: 100%; margin-top: 5px; }
-        .checkbox-group {
-            display: flex; align-items: center; justify-content: center; margin-top: 15px; font-weight: bold; background: #e8f8f5; padding: 10px; border-radius: 5px;
+        
+        /* නව Checkbox නිර්මාණ */
+        .checkbox-container {
+            display: flex; flex-direction: column; gap: 10px; margin-top: 15px;
         }
+        .checkbox-item {
+            display: flex; align-items: center; justify-content: center; font-weight: bold; background: #e8f8f5; padding: 10px; border-radius: 5px;
+        }
+        .checkbox-item.flash { background: #fef9e7; color: #d35400; }
         input[type=checkbox] { transform: scale(1.5); margin-right: 10px; }
     </style>
 </head>
 <body>
 
-    <h2>සහල් ප්‍රමිති පරීක්ෂාව (Calibration Mode)</h2>
+    <h2>සහල් ප්‍රමිති පරීක්ෂාව</h2>
     <div id="statusMessage" class="status">OpenCV.js පූරණය වෙමින් පවතී...</div>
 
     <div class="container">
@@ -41,12 +46,19 @@
         <canvas id="canvasOutput"></canvas>
 
         <div class="controls">
-            <div class="checkbox-group">
-                <input type="checkbox" id="showMask">
-                <label for="showMask">කැමරාව දකින ආකාරය පෙන්වන්න (Show Mask)</label>
+            <div class="checkbox-container">
+                <div class="checkbox-item flash">
+                    <input type="checkbox" id="torchToggle">
+                    <label for="torchToggle">ෆ්ලෑෂ් ලයිට් ක්‍රියාත්මක කරන්න (Flashlight)</label>
+                </div>
+
+                <div class="checkbox-item">
+                    <input type="checkbox" id="showMask">
+                    <label for="showMask">කැමරාව දකින ආකාරය (Show Mask)</label>
+                </div>
             </div>
             
-            <p style="font-size: 12px; color: #7f8c8d; text-align: center; margin-bottom: 5px;">අවශ්‍ය වර්ණය හඳුනාගන්නා තුරු පහත අගයන් වෙනස් කරන්න</p>
+            <p style="font-size: 12px; color: #7f8c8d; text-align: center; margin-top: 15px; margin-bottom: 5px;">අවශ්‍ය වර්ණය හඳුනාගන්නා තුරු පහත අගයන් වෙනස් කරන්න</p>
 
             <div class="control-group">
                 <label>Value (අඳුරු බව) - උපරිමය: <span id="vMaxVal">80</span></label>
@@ -64,10 +76,10 @@
     <script>
         let video = document.getElementById('videoInput');
         let canvasOutput = document.getElementById('canvasOutput');
-        let src, dst, cap;
+        let torchToggle = document.getElementById('torchToggle');
+        let src, dst, cap, videoTrack;
         let streaming = false;
 
-        // UI Controls Update
         document.getElementById('vMax').oninput = function() { document.getElementById('vMaxVal').innerText = this.value; }
         document.getElementById('minArea').oninput = function() { document.getElementById('areaVal').innerText = this.value; }
 
@@ -79,17 +91,34 @@
                 .then(function(stream) {
                     video.srcObject = stream;
                     video.play();
+                    
+                    // Video Track එක හඳුනාගැනීම (Torch එක පාලනය කිරීමට)
+                    videoTrack = stream.getVideoTracks()[0];
+
                     video.onloadedmetadata = () => {
                         video.width = video.videoWidth; video.height = video.videoHeight;
                         canvasOutput.width = video.videoWidth; canvasOutput.height = video.videoHeight;
                         streaming = true;
-                        document.getElementById('statusMessage').style.display = 'none'; // වැඩ කරද්දී Error message එක අයින් කරනවා
+                        document.getElementById('statusMessage').style.display = 'none';
                         startProcessing();
                     };
                 }).catch(function(err) {
                     document.getElementById('statusMessage').innerText = 'කැමරාවට අවසර ලබා දී නැත!';
                 });
         }
+
+        // ෆ්ලෑෂ් ලයිට් එක ක්‍රියාත්මක සහ අක්‍රිය කිරීම
+        torchToggle.addEventListener('change', function(event) {
+            if (videoTrack) {
+                videoTrack.applyConstraints({
+                    advanced: [{ torch: event.target.checked }]
+                }).catch(err => {
+                    console.log("Torch Error: ", err);
+                    alert("ඔබේ ජංගම දුරකථනය හෝ බ්‍රව්සරය මෙම පහසුකමට සහාය නොදක්වයි.");
+                    event.target.checked = false; // Checkbox එක නැවත අක්‍රිය කිරීම
+                });
+            }
+        });
 
         function startProcessing() {
             src = new cv.Mat(video.height, video.width, cv.CV_8UC4);
@@ -107,19 +136,16 @@
                     cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB);
                     cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
 
-                    // UI එකෙන් අගයන් ලබා ගැනීම
                     let vMaxLimit = parseInt(document.getElementById('vMax').value);
                     let minAreaLimit = parseInt(document.getElementById('minArea').value);
                     let showMask = document.getElementById('showMask').checked;
 
-                    // කළු පැහැය සඳහා පමණක් පෙරීම (Value අගය පමණක් වෙනස් කිරීම ප්‍රමාණවත් වේ)
                     let low = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [0, 0, 0, 0]);
                     let high = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [180, 255, vMaxLimit, 0]);
 
                     cv.inRange(hsv, low, high, mask);
 
                     if (showMask) {
-                        // Mask එක සක්‍රිය කළ විට සුදු පාටින් පෙනෙන්නේ හඳුනාගත් දෝෂ (Defects) වේ
                         cv.imshow('canvasOutput', mask);
                     } else {
                         let contours = new cv.MatVector();
