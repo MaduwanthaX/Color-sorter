@@ -3,65 +3,63 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Rice Quality Analyzer - Senadeera Mills</title>
+    <title>Rice Quality Analyzer - Pro</title>
     <style>
-        /* ජංගම දුරකථන සඳහා UI සැලසුම */
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; /* iOS Native Fonts */
-            background-color: #f4f7f6;
-            color: #333;
-            text-align: center;
-            margin: 0;
-            padding: 10px;
-            /* iPhone Notch එක මග හැරීමට */
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f4f7f6; color: #333; text-align: center; margin: 0; padding: 10px;
             padding-top: env(safe-area-inset-top, 20px); 
         }
-        h2 {
-            color: #2c3e50;
-            margin-bottom: 10px;
-            font-size: 24px;
-        }
-        .container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            width: 100%;
-            max-width: 500px; /* ලොකු තිර වලදී මැදට ගැනීමට */
-            margin: 0 auto;
-        }
-        /* Mobile තිරයට ගැලපෙන ලෙස Canvas එක සැකසීම */
+        h2 { font-size: 20px; margin-bottom: 10px; }
+        .container { max-width: 500px; margin: 0 auto; }
         canvas {
-            border: 2px solid #34495e;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            width: 100%; /* තිරයේ පළලට සමාන කිරීම */
-            height: auto;
-            background-color: #000;
+            border: 2px solid #34495e; border-radius: 8px; width: 100%; height: auto; background-color: #000;
         }
         .status {
-            margin: 10px 0 20px 0;
-            padding: 12px 20px;
-            background-color: #e74c3c;
-            color: white;
-            border-radius: 8px;
-            font-weight: bold;
-            font-size: 14px;
-            width: 90%;
-            box-sizing: border-box;
+            margin: 5px 0 15px 0; padding: 10px; background-color: #e74c3c; color: white; border-radius: 5px; font-weight: bold; font-size: 14px;
         }
+        /* Sliders සඳහා UI */
+        .controls {
+            background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-top: 15px; text-align: left;
+        }
+        .control-group { margin-bottom: 10px; }
+        .control-group label { display: flex; justify-content: space-between; font-size: 13px; font-weight: bold; color: #555;}
+        input[type=range] { width: 100%; margin-top: 5px; }
+        .checkbox-group {
+            display: flex; align-items: center; justify-content: center; margin-top: 15px; font-weight: bold; background: #e8f8f5; padding: 10px; border-radius: 5px;
+        }
+        input[type=checkbox] { transform: scale(1.5); margin-right: 10px; }
     </style>
 </head>
 <body>
 
-    <h2>සහල් ප්‍රමිති පරීක්ෂාව</h2>
+    <h2>සහල් ප්‍රමිති පරීක්ෂාව (Calibration Mode)</h2>
     <div id="statusMessage" class="status">OpenCV.js පූරණය වෙමින් පවතී...</div>
 
     <div class="container">
         <video id="videoInput" autoplay playsinline muted style="display:none;"></video>
         <canvas id="canvasOutput"></canvas>
+
+        <div class="controls">
+            <div class="checkbox-group">
+                <input type="checkbox" id="showMask">
+                <label for="showMask">කැමරාව දකින ආකාරය පෙන්වන්න (Show Mask)</label>
+            </div>
+            
+            <p style="font-size: 12px; color: #7f8c8d; text-align: center; margin-bottom: 5px;">අවශ්‍ය වර්ණය හඳුනාගන්නා තුරු පහත අගයන් වෙනස් කරන්න</p>
+
+            <div class="control-group">
+                <label>Value (අඳුරු බව) - උපරිමය: <span id="vMaxVal">80</span></label>
+                <input type="range" id="vMax" min="0" max="255" value="80">
+            </div>
+            <div class="control-group">
+                <label>ලපයේ අවම ප්‍රමාණය (Size): <span id="areaVal">200</span></label>
+                <input type="range" id="minArea" min="50" max="1500" value="200">
+            </div>
+        </div>
     </div>
 
-    <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvReady();" type="text/javascript"></script>
+    <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvReady();"></script>
 
     <script>
         let video = document.getElementById('videoInput');
@@ -69,42 +67,27 @@
         let src, dst, cap;
         let streaming = false;
 
+        // UI Controls Update
+        document.getElementById('vMax').oninput = function() { document.getElementById('vMaxVal').innerText = this.value; }
+        document.getElementById('minArea').oninput = function() { document.getElementById('areaVal').innerText = this.value; }
+
         function onOpenCvReady() {
             document.getElementById('statusMessage').innerText = 'කැමරාව සක්‍රිය කරමින්...';
             document.getElementById('statusMessage').style.backgroundColor = '#f39c12';
 
-            // iPhone පිටුපස කැමරාව (Back/Environment Camera) ඉල්ලීම
-            const constraints = {
-                video: {
-                    facingMode: "environment", // පිටුපස කැමරාව
-                    width: { ideal: 640 },
-                    height: { ideal: 480 }
-                },
-                audio: false
-            };
-
-            navigator.mediaDevices.getUserMedia(constraints)
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 } }, audio: false })
                 .then(function(stream) {
                     video.srcObject = stream;
                     video.play();
-                    
                     video.onloadedmetadata = () => {
-                        // වීඩියෝවේ සැබෑ ප්‍රමාණය ලබාගෙන Canvas එකට ලබා දීම
-                        video.width = video.videoWidth;
-                        video.height = video.videoHeight;
-                        canvasOutput.width = video.videoWidth;
-                        canvasOutput.height = video.videoHeight;
-                        
+                        video.width = video.videoWidth; video.height = video.videoHeight;
+                        canvasOutput.width = video.videoWidth; canvasOutput.height = video.videoHeight;
                         streaming = true;
-                        document.getElementById('statusMessage').innerText = 'ක්‍රියාත්මකයි - Live View';
-                        document.getElementById('statusMessage').style.backgroundColor = '#2ecc71';
+                        document.getElementById('statusMessage').style.display = 'none'; // වැඩ කරද්දී Error message එක අයින් කරනවා
                         startProcessing();
                     };
-                })
-                .catch(function(err) {
-                    console.log("Error: " + err);
+                }).catch(function(err) {
                     document.getElementById('statusMessage').innerText = 'කැමරාවට අවසර ලබා දී නැත!';
-                    document.getElementById('statusMessage').style.backgroundColor = '#e74c3c';
                 });
         }
 
@@ -115,59 +98,53 @@
             let mask = new cv.Mat();
             cap = new cv.VideoCapture(video);
 
-            const FPS = 30; // Mobile බැටරි සංරක්ෂණයට මෙය 15 හෝ 20 කළ හැක
-
             function processVideo() {
-                if (!streaming) {
-                    src.delete(); dst.delete(); hsv.delete(); mask.delete();
-                    return;
-                }
-                
+                if (!streaming) { src.delete(); dst.delete(); hsv.delete(); mask.delete(); return; }
                 let begin = Date.now();
-                
                 try {
                     cap.read(src);
                     src.copyTo(dst);
-
                     cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB);
                     cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
 
-                    // කළු වර්ණය හඳුනාගැනීමේ සීමාවන්
+                    // UI එකෙන් අගයන් ලබා ගැනීම
+                    let vMaxLimit = parseInt(document.getElementById('vMax').value);
+                    let minAreaLimit = parseInt(document.getElementById('minArea').value);
+                    let showMask = document.getElementById('showMask').checked;
+
+                    // කළු පැහැය සඳහා පමණක් පෙරීම (Value අගය පමණක් වෙනස් කිරීම ප්‍රමාණවත් වේ)
                     let low = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [0, 0, 0, 0]);
-                    let high = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [180, 255, 50, 0]);
+                    let high = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [180, 255, vMaxLimit, 0]);
 
                     cv.inRange(hsv, low, high, mask);
 
-                    let contours = new cv.MatVector();
-                    let hierarchy = new cv.Mat();
-                    cv.findContours(mask, contours, hierarchy, cv.RETR_CCOMP, cv.CHAIN_APPROX_SIMPLE);
+                    if (showMask) {
+                        // Mask එක සක්‍රිය කළ විට සුදු පාටින් පෙනෙන්නේ හඳුනාගත් දෝෂ (Defects) වේ
+                        cv.imshow('canvasOutput', mask);
+                    } else {
+                        let contours = new cv.MatVector();
+                        let hierarchy = new cv.Mat();
+                        cv.findContours(mask, contours, hierarchy, cv.RETR_CCOMP, cv.CHAIN_APPROX_SIMPLE);
 
-                    for (let i = 0; i < contours.size(); ++i) {
-                        let cnt = contours.get(i);
-                        let area = cv.contourArea(cnt);
-                        
-                        if (area > 300) { // Mobile සඳහා කුඩා අගයක්
-                            let rect = cv.boundingRect(cnt);
-                            let point1 = new cv.Point(rect.x, rect.y);
-                            let point2 = new cv.Point(rect.x + rect.width, rect.y + rect.height);
-                            // රතු පාට කොටුව සහ ටිකක් ඝනකම වැඩි කිරීම (3)
-                            cv.rectangle(dst, point1, point2, [255, 0, 0, 255], 3, cv.LINE_8, 0);
+                        for (let i = 0; i < contours.size(); ++i) {
+                            let cnt = contours.get(i);
+                            if (cv.contourArea(cnt) > minAreaLimit) {
+                                let rect = cv.boundingRect(cnt);
+                                let p1 = new cv.Point(rect.x, rect.y);
+                                let p2 = new cv.Point(rect.x + rect.width, rect.y + rect.height);
+                                cv.rectangle(dst, p1, p2, [255, 0, 0, 255], 2, cv.LINE_8, 0);
+                            }
+                            cnt.delete();
                         }
-                        cnt.delete();
+                        cv.imshow('canvasOutput', dst);
+                        contours.delete(); hierarchy.delete();
                     }
+                    low.delete(); high.delete();
+                } catch (err) { console.log(err); }
 
-                    cv.imshow('canvasOutput', dst);
-
-                    low.delete(); high.delete(); hierarchy.delete(); contours.delete();
-
-                } catch (err) {
-                    console.log("Processing Error:", err);
-                }
-
-                let delay = 1000 / FPS - (Date.now() - begin);
+                let delay = 1000 / 30 - (Date.now() - begin);
                 setTimeout(processVideo, delay > 0 ? delay : 0);
             }
-            
             setTimeout(processVideo, 0);
         }
     </script>
