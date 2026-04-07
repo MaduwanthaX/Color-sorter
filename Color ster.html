@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="si">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Rice Quality Analyzer - Senadeera Mills</title>
+    <style>
+        /* ජංගම දුරකථන සඳහා UI සැලසුම */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; /* iOS Native Fonts */
+            background-color: #f4f7f6;
+            color: #333;
+            text-align: center;
+            margin: 0;
+            padding: 10px;
+            /* iPhone Notch එක මග හැරීමට */
+            padding-top: env(safe-area-inset-top, 20px); 
+        }
+        h2 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 24px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            max-width: 500px; /* ලොකු තිර වලදී මැදට ගැනීමට */
+            margin: 0 auto;
+        }
+        /* Mobile තිරයට ගැලපෙන ලෙස Canvas එක සැකසීම */
+        canvas {
+            border: 2px solid #34495e;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            width: 100%; /* තිරයේ පළලට සමාන කිරීම */
+            height: auto;
+            background-color: #000;
+        }
+        .status {
+            margin: 10px 0 20px 0;
+            padding: 12px 20px;
+            background-color: #e74c3c;
+            color: white;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 14px;
+            width: 90%;
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>සහල් ප්‍රමිති පරීක්ෂාව</h2>
+    <div id="statusMessage" class="status">OpenCV.js පූරණය වෙමින් පවතී...</div>
+
+    <div class="container">
+        <video id="videoInput" autoplay playsinline muted style="display:none;"></video>
+        <canvas id="canvasOutput"></canvas>
+    </div>
+
+    <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvReady();" type="text/javascript"></script>
+
+    <script>
+        let video = document.getElementById('videoInput');
+        let canvasOutput = document.getElementById('canvasOutput');
+        let src, dst, cap;
+        let streaming = false;
+
+        function onOpenCvReady() {
+            document.getElementById('statusMessage').innerText = 'කැමරාව සක්‍රිය කරමින්...';
+            document.getElementById('statusMessage').style.backgroundColor = '#f39c12';
+
+            // iPhone පිටුපස කැමරාව (Back/Environment Camera) ඉල්ලීම
+            const constraints = {
+                video: {
+                    facingMode: "environment", // පිටුපස කැමරාව
+                    width: { ideal: 640 },
+                    height: { ideal: 480 }
+                },
+                audio: false
+            };
+
+            navigator.mediaDevices.getUserMedia(constraints)
+                .then(function(stream) {
+                    video.srcObject = stream;
+                    video.play();
+                    
+                    video.onloadedmetadata = () => {
+                        // වීඩියෝවේ සැබෑ ප්‍රමාණය ලබාගෙන Canvas එකට ලබා දීම
+                        video.width = video.videoWidth;
+                        video.height = video.videoHeight;
+                        canvasOutput.width = video.videoWidth;
+                        canvasOutput.height = video.videoHeight;
+                        
+                        streaming = true;
+                        document.getElementById('statusMessage').innerText = 'ක්‍රියාත්මකයි - Live View';
+                        document.getElementById('statusMessage').style.backgroundColor = '#2ecc71';
+                        startProcessing();
+                    };
+                })
+                .catch(function(err) {
+                    console.log("Error: " + err);
+                    document.getElementById('statusMessage').innerText = 'කැමරාවට අවසර ලබා දී නැත!';
+                    document.getElementById('statusMessage').style.backgroundColor = '#e74c3c';
+                });
+        }
+
+        function startProcessing() {
+            src = new cv.Mat(video.height, video.width, cv.CV_8UC4);
+            dst = new cv.Mat(video.height, video.width, cv.CV_8UC4);
+            let hsv = new cv.Mat();
+            let mask = new cv.Mat();
+            cap = new cv.VideoCapture(video);
+
+            const FPS = 30; // Mobile බැටරි සංරක්ෂණයට මෙය 15 හෝ 20 කළ හැක
+
+            function processVideo() {
+                if (!streaming) {
+                    src.delete(); dst.delete(); hsv.delete(); mask.delete();
+                    return;
+                }
+                
+                let begin = Date.now();
+                
+                try {
+                    cap.read(src);
+                    src.copyTo(dst);
+
+                    cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB);
+                    cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
+
+                    // කළු වර්ණය හඳුනාගැනීමේ සීමාවන්
+                    let low = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [0, 0, 0, 0]);
+                    let high = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [180, 255, 50, 0]);
+
+                    cv.inRange(hsv, low, high, mask);
+
+                    let contours = new cv.MatVector();
+                    let hierarchy = new cv.Mat();
+                    cv.findContours(mask, contours, hierarchy, cv.RETR_CCOMP, cv.CHAIN_APPROX_SIMPLE);
+
+                    for (let i = 0; i < contours.size(); ++i) {
+                        let cnt = contours.get(i);
+                        let area = cv.contourArea(cnt);
+                        
+                        if (area > 300) { // Mobile සඳහා කුඩා අගයක්
+                            let rect = cv.boundingRect(cnt);
+                            let point1 = new cv.Point(rect.x, rect.y);
+                            let point2 = new cv.Point(rect.x + rect.width, rect.y + rect.height);
+                            // රතු පාට කොටුව සහ ටිකක් ඝනකම වැඩි කිරීම (3)
+                            cv.rectangle(dst, point1, point2, [255, 0, 0, 255], 3, cv.LINE_8, 0);
+                        }
+                        cnt.delete();
+                    }
+
+                    cv.imshow('canvasOutput', dst);
+
+                    low.delete(); high.delete(); hierarchy.delete(); contours.delete();
+
+                } catch (err) {
+                    console.log("Processing Error:", err);
+                }
+
+                let delay = 1000 / FPS - (Date.now() - begin);
+                setTimeout(processVideo, delay > 0 ? delay : 0);
+            }
+            
+            setTimeout(processVideo, 0);
+        }
+    </script>
+</body>
+</html>
