@@ -3,15 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Rice Quality Analyzer - Pro</title>
+    <title>Rice Color Quality Matcher - Senadeera Mills</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             background-color: #f4f7f6; color: #333; text-align: center; margin: 0; padding: 10px;
             padding-top: env(safe-area-inset-top, 20px); 
         }
-        h2 { font-size: 20px; margin-bottom: 10px; }
-        .container { max-width: 500px; margin: 0 auto; }
+        h2 { font-size: 20px; margin-bottom: 10px; color: #2c3e50; }
+        .container { max-width: 500px; margin: 0 auto; position: relative; }
         canvas {
             border: 2px solid #34495e; border-radius: 8px; width: 100%; height: auto; background-color: #000;
         }
@@ -19,26 +19,27 @@
             margin: 5px 0 15px 0; padding: 10px; background-color: #e74c3c; color: white; border-radius: 5px; font-weight: bold; font-size: 14px;
         }
         .controls {
-            background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-top: 15px; text-align: left;
+            background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-top: 15px;
         }
-        .control-group { margin-bottom: 10px; }
-        .control-group label { display: flex; justify-content: space-between; font-size: 13px; font-weight: bold; color: #555;}
-        input[type=range] { width: 100%; margin-top: 5px; }
+        .match-display {
+            font-size: 24px; font-weight: bold; margin: 10px 0; padding: 15px; border-radius: 8px; background: #ecf0f1; border: 2px solid #bdc3c7;
+        }
+        .perfect-match { background: #d5f5e3; border-color: #2ecc71; color: #27ae60; }
+        .bad-match { background: #fadbd8; border-color: #e74c3c; color: #c0392b; }
         
-        /* නව Checkbox නිර්මාණ */
-        .checkbox-container {
-            display: flex; flex-direction: column; gap: 10px; margin-top: 15px;
+        button {
+            background-color: #3498db; color: white; border: none; padding: 12px 20px; font-size: 16px; font-weight: bold; border-radius: 5px; width: 100%; margin-bottom: 10px;
         }
-        .checkbox-item {
-            display: flex; align-items: center; justify-content: center; font-weight: bold; background: #e8f8f5; padding: 10px; border-radius: 5px;
-        }
-        .checkbox-item.flash { background: #fef9e7; color: #d35400; }
-        input[type=checkbox] { transform: scale(1.5); margin-right: 10px; }
+        button:active { background-color: #2980b9; }
+        
+        .color-boxes { display: flex; justify-content: space-around; margin-top: 15px; }
+        .color-box { text-align: center; font-size: 12px; font-weight: bold; color: #7f8c8d; }
+        .swatch { width: 60px; height: 60px; border-radius: 8px; border: 2px solid #bdc3c7; margin-top: 5px; background-color: #fff; }
     </style>
 </head>
 <body>
 
-    <h2>සහල් ප්‍රමිති පරීක්ෂාව</h2>
+    <h2>සහල් වර්ණ ප්‍රමිති පරීක්ෂාව</h2>
     <div id="statusMessage" class="status">OpenCV.js පූරණය වෙමින් පවතී...</div>
 
     <div class="container">
@@ -46,27 +47,24 @@
         <canvas id="canvasOutput"></canvas>
 
         <div class="controls">
-            <div class="checkbox-container">
-                <div class="checkbox-item flash">
-                    <input type="checkbox" id="torchToggle">
-                    <label for="torchToggle">ෆ්ලෑෂ් ලයිට් ක්‍රියාත්මක කරන්න (Flashlight)</label>
+            <div id="matchScore" class="match-display">ගැලපීම: --%</div>
+            
+            <button id="setStandardBtn">1. මෙම වර්ණය ප්‍රමිතිය ලෙස සකසන්න</button>
+            
+            <div class="color-boxes">
+                <div class="color-box">
+                    ඉලක්ක වර්ණය (Standard)
+                    <div id="targetColorBox" class="swatch"></div>
                 </div>
-
-                <div class="checkbox-item">
-                    <input type="checkbox" id="showMask">
-                    <label for="showMask">කැමරාව දකින ආකාරය (Show Mask)</label>
+                <div class="color-box">
+                    සජීවී වර්ණය (Live)
+                    <div id="liveColorBox" class="swatch"></div>
                 </div>
             </div>
             
-            <p style="font-size: 12px; color: #7f8c8d; text-align: center; margin-top: 15px; margin-bottom: 5px;">අවශ්‍ය වර්ණය හඳුනාගන්නා තුරු පහත අගයන් වෙනස් කරන්න</p>
-
-            <div class="control-group">
-                <label>Value (අඳුරු බව) - උපරිමය: <span id="vMaxVal">80</span></label>
-                <input type="range" id="vMax" min="0" max="255" value="80">
-            </div>
-            <div class="control-group">
-                <label>ලපයේ අවම ප්‍රමාණය (Size): <span id="areaVal">200</span></label>
-                <input type="range" id="minArea" min="50" max="1500" value="200">
+            <div style="margin-top: 15px; display: flex; align-items: center; justify-content: center; background: #fef9e7; padding: 10px; border-radius: 5px; font-weight:bold;">
+                <input type="checkbox" id="torchToggle" style="transform: scale(1.5); margin-right: 10px;">
+                <label for="torchToggle">ෆ්ලෑෂ් ලයිට් (Flashlight)</label>
             </div>
         </div>
     </div>
@@ -80,8 +78,7 @@
         let src, dst, cap, videoTrack;
         let streaming = false;
 
-        document.getElementById('vMax').oninput = function() { document.getElementById('vMaxVal').innerText = this.value; }
-        document.getElementById('minArea').oninput = function() { document.getElementById('areaVal').innerText = this.value; }
+        let targetColor = null; // ප්‍රමිතිගත වර්ණය (R, G, B) ගබඩා කිරීමට
 
         function onOpenCvReady() {
             document.getElementById('statusMessage').innerText = 'කැමරාව සක්‍රිය කරමින්...';
@@ -91,8 +88,6 @@
                 .then(function(stream) {
                     video.srcObject = stream;
                     video.play();
-                    
-                    // Video Track එක හඳුනාගැනීම (Torch එක පාලනය කිරීමට)
                     videoTrack = stream.getVideoTracks()[0];
 
                     video.onloadedmetadata = () => {
@@ -107,65 +102,89 @@
                 });
         }
 
-        // ෆ්ලෑෂ් ලයිට් එක ක්‍රියාත්මක සහ අක්‍රිය කිරීම
         torchToggle.addEventListener('change', function(event) {
             if (videoTrack) {
-                videoTrack.applyConstraints({
-                    advanced: [{ torch: event.target.checked }]
-                }).catch(err => {
-                    console.log("Torch Error: ", err);
-                    alert("ඔබේ ජංගම දුරකථනය හෝ බ්‍රව්සරය මෙම පහසුකමට සහාය නොදක්වයි.");
-                    event.target.checked = false; // Checkbox එක නැවත අක්‍රිය කිරීම
-                });
+                videoTrack.applyConstraints({ advanced: [{ torch: event.target.checked }] })
+                .catch(err => { alert("ඔබේ ජංගම දුරකථනය මෙම පහසුකමට සහාය නොදක්වයි."); event.target.checked = false; });
             }
         });
 
         function startProcessing() {
             src = new cv.Mat(video.height, video.width, cv.CV_8UC4);
             dst = new cv.Mat(video.height, video.width, cv.CV_8UC4);
-            let hsv = new cv.Mat();
-            let mask = new cv.Mat();
             cap = new cv.VideoCapture(video);
 
+            // තිරයේ මැද කොටුව (Target Area)
+            let boxSize = 80;
+
+            document.getElementById('setStandardBtn').addEventListener('click', () => {
+                if (!streaming) return;
+                // මැද කොටුවේ වර්ණය කියවීම සඳහා
+                let rect = new cv.Rect(video.width/2 - boxSize/2, video.height/2 - boxSize/2, boxSize, boxSize);
+                let roi = src.roi(rect);
+                let meanColor = cv.mean(roi); // [R, G, B, A] ලබා දෙයි
+                
+                targetColor = [meanColor[0], meanColor[1], meanColor[2]];
+                
+                // UI එකේ Target පාට පෙන්වීම
+                document.getElementById('targetColorBox').style.backgroundColor = `rgb(${targetColor[0]}, ${targetColor[1]}, ${targetColor[2]})`;
+                roi.delete();
+            });
+
             function processVideo() {
-                if (!streaming) { src.delete(); dst.delete(); hsv.delete(); mask.delete(); return; }
+                if (!streaming) { src.delete(); dst.delete(); return; }
                 let begin = Date.now();
                 try {
                     cap.read(src);
                     src.copyTo(dst);
-                    cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB);
-                    cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
 
-                    let vMaxLimit = parseInt(document.getElementById('vMax').value);
-                    let minAreaLimit = parseInt(document.getElementById('minArea').value);
-                    let showMask = document.getElementById('showMask').checked;
+                    // මැද කොටුව නිර්වචනය කිරීම
+                    let startPoint = new cv.Point(video.width/2 - boxSize/2, video.height/2 - boxSize/2);
+                    let endPoint = new cv.Point(video.width/2 + boxSize/2, video.height/2 + boxSize/2);
+                    
+                    // මැද කොටුවේ සජීවී වර්ණය ගණනය කිරීම
+                    let rect = new cv.Rect(startPoint.x, startPoint.y, boxSize, boxSize);
+                    let roi = src.roi(rect);
+                    let liveColor = cv.mean(roi);
+                    
+                    // UI එකේ Live පාට පෙන්වීම
+                    document.getElementById('liveColorBox').style.backgroundColor = `rgb(${liveColor[0]}, ${liveColor[1]}, ${liveColor[2]})`;
 
-                    let low = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [0, 0, 0, 0]);
-                    let high = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [180, 255, vMaxLimit, 0]);
+                    // ප්‍රතිශතය ගණනය කිරීම
+                    if (targetColor) {
+                        // ත්‍රිමාණ අවකාශයේ වර්ණ දෙක අතර දුර (Euclidean Distance in RGB space)
+                        let rDiff = liveColor[0] - targetColor[0];
+                        let gDiff = liveColor[1] - targetColor[1];
+                        let bDiff = liveColor[2] - targetColor[2];
+                        let distance = Math.sqrt((rDiff * rDiff) + (gDiff * gDiff) + (bDiff * bDiff));
+                        
+                        // උපරිම දුර (441.6) පාදක කරගෙන ප්‍රතිශතය සෙවීම
+                        let matchPercentage = Math.max(0, 100 - (distance / 441.67 * 100));
+                        // වර්ණ ඉතා ආසන්න බැවින් කුඩා වෙනසක් විශාල කර පෙන්වීම සඳහා ගුණ කිරීමක්
+                        let finalScore = Math.max(0, 100 - (distance * 1.5)).toFixed(1); 
+                        
+                        if(finalScore > 100) finalScore = 100;
 
-                    cv.inRange(hsv, low, high, mask);
-
-                    if (showMask) {
-                        cv.imshow('canvasOutput', mask);
-                    } else {
-                        let contours = new cv.MatVector();
-                        let hierarchy = new cv.Mat();
-                        cv.findContours(mask, contours, hierarchy, cv.RETR_CCOMP, cv.CHAIN_APPROX_SIMPLE);
-
-                        for (let i = 0; i < contours.size(); ++i) {
-                            let cnt = contours.get(i);
-                            if (cv.contourArea(cnt) > minAreaLimit) {
-                                let rect = cv.boundingRect(cnt);
-                                let p1 = new cv.Point(rect.x, rect.y);
-                                let p2 = new cv.Point(rect.x + rect.width, rect.y + rect.height);
-                                cv.rectangle(dst, p1, p2, [255, 0, 0, 255], 2, cv.LINE_8, 0);
-                            }
-                            cnt.delete();
+                        let scoreDisplay = document.getElementById('matchScore');
+                        scoreDisplay.innerText = `ගැලපීම: ${finalScore}%`;
+                        
+                        // 90% ට වඩා වැඩි නම් නිවැරදි වර්ණය ලෙස සළකයි
+                        if(finalScore >= 90) {
+                            scoreDisplay.className = "match-display perfect-match";
+                            scoreDisplay.innerText += " (ප්‍රමිතියට අනුකූලයි)";
+                            cv.rectangle(dst, startPoint, endPoint, [0, 255, 0, 255], 3); // හරිත කොටුවක්
+                        } else {
+                            scoreDisplay.className = "match-display bad-match";
+                            scoreDisplay.innerText += " (වර්ණය වෙනස් වී ඇත)";
+                            cv.rectangle(dst, startPoint, endPoint, [255, 0, 0, 255], 3); // රතු කොටුවක්
                         }
-                        cv.imshow('canvasOutput', dst);
-                        contours.delete(); hierarchy.delete();
+                    } else {
+                        // ප්‍රමිතිය සකසා නැති විට නිල් කොටුවක් පෙන්වීම
+                        cv.rectangle(dst, startPoint, endPoint, [0, 165, 255, 255], 3); 
                     }
-                    low.delete(); high.delete();
+
+                    cv.imshow('canvasOutput', dst);
+                    roi.delete();
                 } catch (err) { console.log(err); }
 
                 let delay = 1000 / 30 - (Date.now() - begin);
